@@ -241,6 +241,12 @@ func initDatabaseSchema(ctx context.Context, cfg *config.Config) error {
 		MaxConnLifeTimeSeconds:      src.MaxConnLifeTimeSeconds,
 		MigrationLockTimeoutSeconds: src.MigrationLockTimeoutSeconds,
 	}
+	// sslmode travels through dao's Extra map (see CubeMaster/pkg/base/db).
+	// Managed PostgreSQL that enforces TLS needs it; leaving it empty keeps
+	// the driver default of "disable".
+	if src.SSLMode != "" {
+		daoCfg.Extra = map[string]string{"sslmode": src.SSLMode}
+	}
 	if _, err := dao.Open(ctx, daoCfg); err != nil {
 		return fmt.Errorf("dao open: %w", err)
 	}

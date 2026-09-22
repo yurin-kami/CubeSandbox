@@ -71,6 +71,10 @@ type Config struct {
 	RedisMasterName       string `yaml:"redis_master_name"`
 	RedisSentinelNodes    string `yaml:"redis_sentinel_nodes"`
 	RedisSentinelPassword string `yaml:"redis_sentinel_password"`
+	// RedisTLS turns on TLS for the Redis connection. It applies to the
+	// REDIS_URL path (no-op there — put rediss:// in the URL), the split
+	// host/port path (switches the built URL to rediss://) and Sentinel.
+	RedisTLS bool `yaml:"redis_tls"`
 
 	// Sandbox domain exposed to SDK clients; matches SDK handler's
 	// CUBE_API_SANDBOX_DOMAIN env so the /config endpoint stays in sync.
@@ -254,7 +258,7 @@ func (c *Config) DaoConfig() dao.Config {
 	// Parse DatabaseURL and select driver from the scheme.
 	// Supported schemes: mysql://, postgres:// (or postgresql://).
 	driver, user, pass, host, port, dbname := parseDatabaseURL(c.DatabaseURL)
-	return dao.Config{
+	cfg := dao.Config{
 		Driver:       driver,
 		User:         user,
 		Pwd:          pass,
@@ -263,6 +267,12 @@ func (c *Config) DaoConfig() dao.Config {
 		MaxIdleConns: 10,
 		MaxOpenConns: 100,
 	}
+	// sslmode only applies to postgres; "?sslmode=require" in DATABASE_URL is
+	// the natural way to turn TLS on for a managed server.
+	if mode := parseDatabaseSSLMode(c.DatabaseURL); mode != "" {
+		cfg.Extra = map[string]string{"sslmode": mode}
+	}
+	return cfg
 }
 
 // parseDatabaseURL extracts (driver, user, password, host, port, dbname) from
@@ -313,6 +323,18 @@ func parseDatabaseURL(rawURL string) (driver, user, pass, host string, port int,
 	dbname = strings.TrimPrefix(u.Path, "/")
 
 	return
+}
+
+// parseDatabaseSSLMode reads sslmode out of a database URL's query string.
+// parseDatabaseURL drops the query, and for postgres:// URLs libpq's own
+// default is "prefer" while dao's is "disable", so the value has to be carried
+// through dao.Config.Extra explicitly. Empty means "let the driver decide".
+func parseDatabaseSSLMode(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get("sslmode")
 }
 
 // MySQLPortOrDefault returns the configured MySQL port or 3306.
@@ -437,6 +459,11 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("REDIS_SENTINEL_PASSWORD"); v != "" {
 		cfg.RedisSentinelPassword = v
+	}
+	if v := os.Getenv("REDIS_TLS"); v != "" {
+		if on, err := strconv.ParseBool(v); err == nil {
+			cfg.RedisTLS = on
+		}
 	}
 	if v := os.Getenv("CUBE_API_SANDBOX_DOMAIN"); v != "" {
 		cfg.SandboxDomain = v

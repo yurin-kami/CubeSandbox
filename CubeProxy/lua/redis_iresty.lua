@@ -207,6 +207,15 @@ end
 
 function _M.connect_mod(self, redis)
     redis:set_timeout(self.timeout)
+    -- Managed Redis that enforces in-transit encryption refuses plaintext, so
+    -- the handshake has to be requested before the very first connect. It is
+    -- also required before the Sentinel probe below, which opens its own
+    -- connections. nginx needs lua_ssl_trusted_certificate to verify the
+    -- server; without it resty.redis fails the handshake rather than silently
+    -- falling back to plaintext.
+    if self.redis_ssl and redis.ssl then
+        redis:ssl()
+    end
     if sentinel_mode(self) then
         -- Fast path: reuse the cached master address to avoid a Sentinel probe
         -- on every command. On a failed connect (likely a failover) drop the
@@ -429,6 +438,7 @@ function _M.new(self, opts)
         redis_master_name = opts.redis_master_name or "",
         redis_sentinel_nodes = opts.redis_sentinel_nodes or "",
         redis_sentinel_pd = opts.redis_sentinel_pd or "",
+        redis_ssl = opts.redis_ssl or false,
         _reqs = nil
     }, mt)
 end

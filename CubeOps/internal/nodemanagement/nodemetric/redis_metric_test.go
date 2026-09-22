@@ -101,11 +101,16 @@ func TestParseRedisAddrs(t *testing.T) {
 }
 
 func TestBuildRedisURLUsesConfiguredDatabase(t *testing.T) {
-	if got := buildRedisURL("redis.example", 6380, 7, "secret"); got != "redis://:secret@redis.example:6380/7" {
+	if got := buildRedisURL("redis.example", 6380, 7, "secret", false); got != "redis://:secret@redis.example:6380/7" {
 		t.Fatalf("buildRedisURL() = %q, want configured database", got)
 	}
-	if got := buildRedisURL("redis.example", 0, 0, ""); got != "redis://redis.example:6379/0" {
+	if got := buildRedisURL("redis.example", 0, 0, "", false); got != "redis://redis.example:6379/0" {
 		t.Fatalf("buildRedisURL() default = %q, want database 0", got)
+	}
+	// TLS switches the scheme, which is what redigo's DialURL keys the
+	// handshake off of.
+	if got := buildRedisURL("redis.example", 6380, 7, "secret", true); got != "rediss://:secret@redis.example:6380/7" {
+		t.Fatalf("buildRedisURL() with TLS = %q, want rediss scheme", got)
 	}
 }
 

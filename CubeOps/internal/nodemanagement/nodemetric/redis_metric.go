@@ -88,7 +88,7 @@ func resolveRedisConnection(cfg *config.Config) (string, bool, error) {
 		return "", true, nil
 	}
 	if cfg.RedisHost != "" {
-		return buildRedisURL(cfg.RedisHost, cfg.RedisPort, cfg.RedisDB, cfg.RedisPassword), false, nil
+		return buildRedisURL(cfg.RedisHost, cfg.RedisPort, cfg.RedisDB, cfg.RedisPassword, cfg.RedisTLS), false, nil
 	}
 	return "", false, errors.New("nodemetric: redis is not configured (set REDIS_URL or REDIS_HOST/REDIS_MASTER_NAME)")
 }
@@ -167,12 +167,19 @@ func parseRedisAddrs(raw string) []string {
 }
 
 // buildRedisURL assembles a redis:// URL from split host/port/db/password.
-func buildRedisURL(host string, port int, db int, password string) string {
+// useTLS switches the scheme to rediss://, which is what redigo's DialURL keys
+// the TLS handshake off of — managed Redis that enforces in-transit encryption
+// refuses a plaintext connection.
+func buildRedisURL(host string, port int, db int, password string, useTLS bool) string {
 	if port == 0 {
 		port = 6379
 	}
+	scheme := "redis"
+	if useTLS {
+		scheme = "rediss"
+	}
 	u := &url.URL{
-		Scheme: "redis",
+		Scheme: scheme,
 		Host:   fmt.Sprintf("%s:%d", host, port),
 		Path:   fmt.Sprintf("/%d", db),
 	}

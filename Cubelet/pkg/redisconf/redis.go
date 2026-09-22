@@ -7,6 +7,7 @@ package redisconf
 import (
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -19,15 +20,23 @@ type RedisObj struct {
 	RedisHost string `json:"ip"`
 	RedisPort int    `json:"port"`
 	RedisAuth string `json:"auth"`
+	// RedisTLS mirrors the `redis.tls` key in the node conf. Managed Redis
+	// with in-transit encryption refuses plaintext, so Cubelet has to request
+	// the handshake explicitly.
+	RedisTLS bool `json:"tls"`
 }
 
 func (r *RedisObj) InitRedis() (*redis.Client, error) {
 	redisAddr := fmt.Sprintf("%s:%d", r.RedisHost, r.RedisPort)
 
-	rdb := redis.NewClient(&redis.Options{
+	opts := &redis.Options{
 		Addr:     redisAddr,
 		Password: r.RedisAuth,
-	})
+	}
+	if r.RedisTLS {
+		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	rdb := redis.NewClient(opts)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -58,6 +67,7 @@ func GetRedisConf(path string) (*RedisObj, error) {
 	redisObj := &RedisObj{
 		RedisHost: redisConf.Get("redis.ip").(string),
 		RedisPort: int(redisConf.Get("redis.port").(int64)),
+		RedisTLS:  redisConf.Get("redis.tls") == true,
 	}
 
 	cipher, err := GetCipher(redisObj.RedisHost)
